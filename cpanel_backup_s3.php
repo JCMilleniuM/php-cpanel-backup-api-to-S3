@@ -157,7 +157,8 @@ function upload_to_s3(string $filepath): int|false
 
     $filesize    = filesize($filepath);
     $filename    = basename($filepath);
-    $s3Key       = trim(S3_PATH_PREFIX, '/') . '/' . $filename;
+    // Strip ALL whitespace (including injected newlines) then remove any slashes.
+    $s3Key       = trim(trim(S3_PATH_PREFIX), '/') . '/' . $filename;
 
     // Remove any leading slash from the key
     if ($s3Key[0] === '/') {
@@ -220,7 +221,8 @@ function upload_to_s3(string $filepath): int|false
 function list_s3_backups(): array
 {
     $endpoint  = rtrim(S3_ENDPOINT, '/');
-    $prefix    = trim(S3_PATH_PREFIX, '/') . '/';
+    // Strip ALL whitespace (including injected newlines) then remove any slashes.
+    $prefix    = trim(trim(S3_PATH_PREFIX), '/') . '/';
     $service   = 's3';
     $algorithm = 'AWS4-HMAC-SHA256';
     $timestamp = time();
