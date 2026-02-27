@@ -507,7 +507,14 @@ function format_bytes(int $bytes, int $decimals = 2): string
 
 // ─── Main Execution ───────────────────────────────────────────────────────────
 $scriptStart = time();
-echo "Starting cPanel Backup to S3...\n";
+$hostname    = CPANEL_HOST;
+$mailHeaders = implode("\r\n", [
+    "From: Backup to S3 - {$hostname} <noreply@{$hostname}>",
+    "Reply-To: noreply@{$hostname}",
+    "X-Mailer: PHP/" . phpversion()
+]);
+
+echo "Starting cPanel Backup to S3...\\n";
 
 // 1. Trigger Local Backup via cPanel UAPI
 echo "Requesting local backup...\n";
