@@ -7,10 +7,10 @@ Automated PHP script that triggers a cPanel full backup and uploads it to any S3
 - **cPanel UAPI Integration** — triggers full backups via cPanel's API using token-based authentication
 - **S3-Compatible Upload** — uses AWS Signature v4, works with any S3-compatible provider
 - **Automatic Cleanup** — deletes the local backup file after a successful upload
-- **Email Notifications** — sends detailed success/failure alerts including run time, backup size, and folder total
+- **Email Notifications** — sends detailed success/failure alerts including run time, backup size, and folder total; emails are sent from `noreply@<your-host>` with the display name `Backup to S3 - <your-host>`
 - **Smart Polling** — monitors the home directory for the backup file and waits for it to finish writing before uploading
 - **Run Time Reporting** — tracks and reports total script execution time in every notification email
-- **Backup Size Reporting** — includes the uploaded file size and the total size of the entire S3 backup folder in the notification email
+- **Backup Size Reporting** — includes the uploaded file size and the real total size of the entire S3 backup folder in the notification email
 - **Backup Retention Management** — automatically deletes the oldest backup(s) from S3 when the configured limit is exceeded; any deleted files are listed in the notification email
 
 ## Requirements
@@ -28,21 +28,21 @@ Edit the constants at the top of `cpanel_backup_s3.php`:
 
 | Constant           | Description                              |
 | ------------------ | ---------------------------------------- |
-| `CPANEL_HOST`      | cPanel server hostname                   |
+| `CPANEL_HOST`      | cPanel server hostname (e.g. `4host.ca`) |
 | `CPANEL_PORT`      | cPanel port (default `2083`)             |
 | `CPANEL_USER`      | cPanel username                          |
 | `CPANEL_API_TOKEN` | cPanel API token (see below)             |
 
 ### S3 / Object Storage Settings
 
-| Constant         | Description                                            |
-| ---------------- | ------------------------------------------------------ |
-| `S3_ENDPOINT`    | Storage endpoint URL                                   |
-| `S3_REGION`      | Region (e.g. `us-east-1`, `auto` for R2)               |
-| `S3_BUCKET`      | Bucket name                                            |
-| `S3_ACCESS_KEY`  | Access key ID                                          |
-| `S3_SECRET_KEY`  | Secret access key                                      |
-| `S3_PATH_PREFIX` | Optional folder prefix inside the bucket (e.g. `backups/`) |
+| Constant         | Description                                                         |
+| ---------------- | ------------------------------------------------------------------- |
+| `S3_ENDPOINT`    | Storage endpoint URL                                                |
+| `S3_REGION`      | Region (e.g. `us-east-1`, `auto` for Cloudflare R2)                |
+| `S3_BUCKET`      | Bucket name                                                         |
+| `S3_ACCESS_KEY`  | Access key ID                                                       |
+| `S3_SECRET_KEY`  | Secret access key                                                   |
+| `S3_PATH_PREFIX` | Optional folder prefix inside the bucket (e.g. `backups/`)         |
 
 ### Notification & Retention
 
@@ -50,6 +50,8 @@ Edit the constants at the top of `cpanel_backup_s3.php`:
 | -------------- | --------------------------------------------------------------------------- |
 | `NOTIFY_EMAIL` | Email address for notifications                                             |
 | `MAX_BACKUPS`  | Max number of backups to keep in the S3 prefix (set to `0` to keep all)    |
+
+> **Note:** Notification emails are automatically sent from `noreply@<CPANEL_HOST>` with the sender name `Backup to S3 - <CPANEL_HOST>`, so they appear clearly identified in your inbox.
 
 ## Generating a cPanel API Token
 
@@ -86,7 +88,7 @@ crontab -e
 4. **Upload** — signs and uploads the file to S3 using AWS Signature v4 (PUT request)
 5. **Cleanup** — deletes the local backup file on successful upload
 6. **Retention** — lists all backups in the S3 prefix; if the count exceeds `MAX_BACKUPS`, the oldest are deleted
-7. **Folder Size** — queries S3 to report the total size of all backups in the prefix
+7. **Folder Size** — queries S3 to calculate and report the real total size of all backups in the prefix
 8. **Notify** — sends an email with the full result summary (see below)
 
 ## Notification Email Format
@@ -94,15 +96,17 @@ crontab -e
 ### Success
 
 ```
+From: Backup to S3 - 4host.ca <noreply@4host.ca>
+
 Backup completed successfully.
 
-Host          : cpanel.example.com
+Host          : 4host.ca
 Bucket        : my-backup-bucket
 File          : backup-2026-02-26_02-00-01.tar.gz
 Size on S3    : 3.47 GB
 Folder total  : 14.21 GB (4 backup(s))
 Duration      : 4m 12s
-Completed at  : 2026-02-26 07:12:13 UTC
+Completed at  : 2026-02-26 07:12:13 EST
 
 Retention limit (5 max) reached. Removed old backup(s):
   - backup-2025-12-01_02-00-01.tar.gz
@@ -111,15 +115,21 @@ Retention limit (5 max) reached. Removed old backup(s):
 ### Failure
 
 ```
+From: Backup to S3 - 4host.ca <noreply@4host.ca>
+
 Backup upload to S3 failed.
 
-Host    : cpanel.example.com
+Host    : 4host.ca
 Bucket  : my-backup-bucket
 File    : backup-2026-02-26_02-00-01.tar.gz
 Duration: 1m 03s
 
 Please check the server logs for details.
 ```
+
+## Deployment
+
+This script is deployed directly to the cPanel server via SSH. The `.github/` directory contains deployment workflows and configuration secrets and is **excluded from the repository** — it is managed locally only and never pushed to GitHub.
 
 ## License
 
