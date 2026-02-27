@@ -69,7 +69,17 @@ jobs:
           grep "define('NOTIFY_EMAIL'"  cpanel_backup_s3.php
           grep "define('MAX_BACKUPS'"   cpanel_backup_s3.php
 
-      # ── 4. Deploy file to cPanel server via SCP ──────────────────────────────
+      # ── 4. Ensure target directory exists on server ──────────────────────────
+      - name: Create scripts directory on server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host:     ${{ vars.SSH_HOST }}
+          username: ${{ vars.SSH_USER }}
+          port:     ${{ vars.SSH_PORT }}
+          key:      ${{ secrets.SSH_PRIVATE_KEY }}
+          script:   mkdir -p /home/${{ vars.SSH_USER }}/scripts
+
+      # ── 5. Deploy file to cPanel server via SCP ──────────────────────────────
       - name: Deploy via SCP
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -78,9 +88,9 @@ jobs:
           port:     ${{ vars.SSH_PORT }}
           key:      ${{ secrets.SSH_PRIVATE_KEY }}
           source:   cpanel_backup_s3.php
-          target:   /home/${{ vars.SSH_USER }}/
+          target:   /home/${{ vars.SSH_USER }}/scripts/
 
-      # ── 5. Set restrictive permissions on deployed file ──────────────────────
+      # ── 6. Set restrictive permissions on deployed file ──────────────────────
       - name: Set file permissions (600)
         uses: appleboy/ssh-action@v1.2.0
         with:
