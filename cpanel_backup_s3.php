@@ -279,24 +279,15 @@ function list_s3_backups(): array
         return [];
     }
 
-    // Strip XML namespace to handle SimpleXML parsing easily
-    $response = str_replace('xmlns="http://s3.amazonaws.com/doc/2006-03-01/"', '', $response);
-    // Catch generic xmlns if returned by S3 compatible providers like R2 or Spaces
-    $response = preg_replace('/ xmlns="[^"]+"/', '', $response);
-
-    // Parse the XML ListBucketResult response
-    $xml = @simplexml_load_string($response);
-    if ($xml === false) {
-        echo "[WARN] Could not parse S3 list response.\n";
-        return [];
-    }
+    // Fallback: Regex extraction for robust XML parsing in cPanel PHP environments
+    preg_match_all('/<Contents>.*?<Key>(.*?)<\/Key>.*?<LastModified>(.*?)<\/LastModified>.*?<Size>(.*?)<\/Size>.*?<\/Contents>/is', $response, $matches, PREG_SET_ORDER);
 
     $objects = [];
-    foreach ($xml->Contents as $item) {
+    foreach ($matches as $match) {
         $objects[] = [
-            'key' => (string)$item->Key,
-            'last_modified' => strtotime((string)$item->LastModified),
-            'size' => (int)$item->Size,
+            'key' => (string)$match[1],
+            'last_modified' => strtotime((string)$match[2]),
+            'size' => (int)$match[3],
         ];
     }
 
@@ -578,7 +569,7 @@ if ($backupFile) {
             }
         }
 
-        mail(NOTIFY_EMAIL, $subject, $body, $mailHeaders);
+        mail(NOTIFY_EMAIL, $subject, $body, $mailHeaders, "-f noreply@{$hostname}");
         echo "[OK] Process complete. Notification sent.\n";
     }
     else {
@@ -591,7 +582,7 @@ if ($backupFile) {
         $body .= "File    : " . basename($backupFile) . "\n";
         $body .= "Duration: " . format_duration($duration) . "\n\n";
         $body .= "Please check the server logs for details.";
-        mail(NOTIFY_EMAIL, $subject, $body, $mailHeaders);
+        mail(NOTIFY_EMAIL, $subject, $body, $mailHeaders, "-f noreply@{$hostname}");
         echo "[ERROR] Upload failed. Notification sent.\n";
     }
 }
@@ -603,6 +594,6 @@ else {
     $body .= "Host: " . CPANEL_HOST . "\n";
     $body .= "The backup file was not detected in the home directory in time.\n";
     $body .= "Please check the cPanel backup logs.";
-    mail(NOTIFY_EMAIL, $subject, $body, $mailHeaders);
+    mail(NOTIFY_EMAIL, $subject, $body, $mailHeaders, "-f noreply@{$hostname}");
     echo "[ERROR] Backup creation timed out. Notification sent.\n";
 }
