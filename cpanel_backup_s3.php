@@ -1,5 +1,4 @@
 <?php
-
 /**
  * cPanel Full Backup to S3-Compatible Storage
  * Supports AWS S3, Cloudflare R2, MinIO, DigitalOcean Spaces, etc.
@@ -291,6 +290,7 @@ function list_s3_backups(): array
         $objects[] = [
             'key'           => (string) $item->Key,
             'last_modified' => strtotime((string) $item->LastModified),
+            'size'          => (int) $item->Size,
         ];
     }
 
