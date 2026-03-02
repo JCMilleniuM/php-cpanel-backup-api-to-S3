@@ -279,6 +279,11 @@ function list_s3_backups(): array
         return [];
     }
 
+    // Strip XML namespace to handle SimpleXML parsing easily
+    $response = str_replace('xmlns="http://s3.amazonaws.com/doc/2006-03-01/"', '', $response);
+    // Catch generic xmlns if returned by S3 compatible providers like R2 or Spaces
+    $response = preg_replace('/ xmlns="[^"]+"/', '', $response);
+
     // Parse the XML ListBucketResult response
     $xml = @simplexml_load_string($response);
     if ($xml === false) {
