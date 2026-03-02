@@ -13,11 +13,11 @@ define('CPANEL_API_TOKEN', 'YOUR_API_TOKEN');
 
 // S3 / Object Storage Details
 define('S3_ENDPOINT', 'https://s3.amazonaws.com'); // e.g., https://<accountid>.r2.cloudflarestorage.com
-define('S3_REGION', 'us-east-1');                  // e.g., auto, us-east-1
-define('S3_BUCKET', 'my-backup-bucket');            // Bucket name
+define('S3_REGION', 'us-east-1'); // e.g., auto, us-east-1
+define('S3_BUCKET', 'my-backup-bucket'); // Bucket name
 define('S3_ACCESS_KEY', 'YOUR_ACCESS_KEY');
 define('S3_SECRET_KEY', 'YOUR_SECRET_KEY');
-define('S3_PATH_PREFIX', 'backups/');               // Optional prefix (folder)
+define('S3_PATH_PREFIX', 'backups/'); // Optional prefix (folder)
 
 // Notification
 define('NOTIFY_EMAIL', 'admin@example.com');
@@ -43,16 +43,16 @@ function cpanel_api_request(string $module, string $function, array $params = []
 
     $ch = curl_init();
     curl_setopt_array($ch, [
-        CURLOPT_URL            => $url,
+        CURLOPT_URL => $url,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_SSL_VERIFYPEER => true,
         CURLOPT_SSL_VERIFYHOST => 2,
-        CURLOPT_HTTPHEADER     => ['Authorization: cpanel ' . CPANEL_USER . ':' . CPANEL_API_TOKEN],
-        CURLOPT_TIMEOUT        => 60,
+        CURLOPT_HTTPHEADER => ['Authorization: cpanel ' . CPANEL_USER . ':' . CPANEL_API_TOKEN],
+        CURLOPT_TIMEOUT => 60,
     ]);
 
     $response = curl_exec($ch);
-    $error    = curl_error($ch);
+    $error = curl_error($ch);
     curl_close($ch);
 
     if ($error) {
@@ -79,30 +79,31 @@ function s3_build_auth_headers(
     string $url,
     string $canonicalUri,
     string $payloadHash,
-    array  $extraHeaders = []
-): array {
-    $service   = 's3';
+    array $extraHeaders = []
+    ): array
+{
+    $service = 's3';
     $algorithm = 'AWS4-HMAC-SHA256';
     $timestamp = time();
-    $amzDate   = gmdate('Ymd\THis\Z', $timestamp);
+    $amzDate = gmdate('Ymd\THis\Z', $timestamp);
     $dateStamp = gmdate('Ymd', $timestamp);
-    $host      = parse_url(rtrim(S3_ENDPOINT, '/'), PHP_URL_HOST);
+    $host = parse_url(rtrim(S3_ENDPOINT, '/'), PHP_URL_HOST);
 
     // Build canonical headers (sorted, lower-cased)
     $headersToSign = array_merge(
-        [
-            'host'                 => $host,
-            'x-amz-content-sha256' => $payloadHash,
-            'x-amz-date'           => $amzDate,
-        ],
+    [
+        'host' => $host,
+        'x-amz-content-sha256' => $payloadHash,
+        'x-amz-date' => $amzDate,
+    ],
         array_change_key_case($extraHeaders, CASE_LOWER)
     );
     ksort($headersToSign);
 
-    $canonicalHeaders  = '';
+    $canonicalHeaders = '';
     $signedHeadersList = [];
     foreach ($headersToSign as $k => $v) {
-        $canonicalHeaders   .= "$k:$v\n";
+        $canonicalHeaders .= "$k:$v\n";
         $signedHeadersList[] = $k;
     }
     $signedHeaders = implode(';', $signedHeadersList);
@@ -112,14 +113,14 @@ function s3_build_auth_headers(
 
     // String to sign
     $credentialScope = "$dateStamp/" . S3_REGION . "/$service/aws4_request";
-    $stringToSign    = "$algorithm\n$amzDate\n$credentialScope\n" . hash('sha256', $canonicalRequest);
+    $stringToSign = "$algorithm\n$amzDate\n$credentialScope\n" . hash('sha256', $canonicalRequest);
 
     // Signing key derivation
-    $kSecret   = 'AWS4' . S3_SECRET_KEY;
-    $kDate     = hash_hmac('sha256', $dateStamp, $kSecret, true);
-    $kRegion   = hash_hmac('sha256', S3_REGION, $kDate, true);
-    $kService  = hash_hmac('sha256', $service, $kRegion, true);
-    $kSigning  = hash_hmac('sha256', 'aws4_request', $kService, true);
+    $kSecret = 'AWS4' . S3_SECRET_KEY;
+    $kDate = hash_hmac('sha256', $dateStamp, $kSecret, true);
+    $kRegion = hash_hmac('sha256', S3_REGION, $kDate, true);
+    $kService = hash_hmac('sha256', $service, $kRegion, true);
+    $kSigning = hash_hmac('sha256', 'aws4_request', $kService, true);
     $signature = hash_hmac('sha256', $stringToSign, $kSigning);
 
     // Authorization header
@@ -154,24 +155,24 @@ function upload_to_s3(string $filepath): int|false
         return false;
     }
 
-    $filesize    = filesize($filepath);
-    $filename    = basename($filepath);
+    $filesize = filesize($filepath);
+    $filename = basename($filepath);
     // Strip ALL whitespace (including injected newlines) then remove any slashes.
-    $s3Key       = trim(trim(S3_PATH_PREFIX), '/') . '/' . $filename;
+    $s3Key = trim(trim(S3_PATH_PREFIX), '/') . '/' . $filename;
 
     // Remove any leading slash from the key
     if ($s3Key[0] === '/') {
         $s3Key = substr($s3Key, 1);
     }
 
-    $endpoint     = rtrim(S3_ENDPOINT, '/');
+    $endpoint = rtrim(S3_ENDPOINT, '/');
     $canonicalUri = '/' . S3_BUCKET . '/' . $s3Key;
-    $url          = $endpoint . $canonicalUri;
-    $payloadHash  = hash_file('sha256', $filepath);
+    $url = $endpoint . $canonicalUri;
+    $payloadHash = hash_file('sha256', $filepath);
 
     $extraHeaders = [
-        'Content-Type'   => 'application/octet-stream',
-        'Content-Length' => (string) $filesize,
+        'Content-Type' => 'application/octet-stream',
+        'Content-Length' => (string)$filesize,
     ];
 
     $headers = s3_build_auth_headers('PUT', $url, $canonicalUri, $payloadHash, $extraHeaders);
@@ -181,19 +182,19 @@ function upload_to_s3(string $filepath): int|false
     $fh = fopen($filepath, 'r');
     $ch = curl_init();
     curl_setopt_array($ch, [
-        CURLOPT_URL            => $url,
-        CURLOPT_PUT            => true,
-        CURLOPT_INFILE         => $fh,
-        CURLOPT_INFILESIZE     => $filesize,
-        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_URL => $url,
+        CURLOPT_PUT => true,
+        CURLOPT_INFILE => $fh,
+        CURLOPT_INFILESIZE => $filesize,
+        CURLOPT_HTTPHEADER => $headers,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_FAILONERROR    => false, // Read error body
+        CURLOPT_FAILONERROR => false, // Read error body
     ]);
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error    = curl_error($ch);
+    $error = curl_error($ch);
     curl_close($ch);
     fclose($fh);
 
@@ -219,42 +220,42 @@ function upload_to_s3(string $filepath): int|false
  */
 function list_s3_backups(): array
 {
-    $endpoint  = rtrim(S3_ENDPOINT, '/');
+    $endpoint = rtrim(S3_ENDPOINT, '/');
     // Strip ALL whitespace (including injected newlines) then remove any slashes.
-    $prefix    = trim(trim(S3_PATH_PREFIX), '/') . '/';
-    $service   = 's3';
+    $prefix = trim(trim(S3_PATH_PREFIX), '/') . '/';
+    $service = 's3';
     $algorithm = 'AWS4-HMAC-SHA256';
     $timestamp = time();
-    $amzDate   = gmdate('Ymd\THis\Z', $timestamp);
+    $amzDate = gmdate('Ymd\THis\Z', $timestamp);
     $dateStamp = gmdate('Ymd', $timestamp);
-    $host      = parse_url($endpoint, PHP_URL_HOST);
+    $host = parse_url($endpoint, PHP_URL_HOST);
 
     // Canonical query string (sorted, RFC-3986 encoded)
     $queryParams = ['list-type' => '2', 'prefix' => $prefix];
     ksort($queryParams);
     $canonicalQueryString = http_build_query($queryParams, '', '&', PHP_QUERY_RFC3986);
 
-    $payloadHash      = hash('sha256', '');
-    $canonicalUri     = '/' . S3_BUCKET;
+    $payloadHash = hash('sha256', '');
+    $canonicalUri = '/' . S3_BUCKET;
     $canonicalHeaders = "host:$host\nx-amz-content-sha256:$payloadHash\nx-amz-date:$amzDate\n";
-    $signedHeaders    = 'host;x-amz-content-sha256;x-amz-date';
+    $signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
 
     $canonicalRequest = "GET\n$canonicalUri\n$canonicalQueryString\n$canonicalHeaders\n$signedHeaders\n$payloadHash";
 
     $credentialScope = "$dateStamp/" . S3_REGION . "/$service/aws4_request";
-    $stringToSign    = "$algorithm\n$amzDate\n$credentialScope\n" . hash('sha256', $canonicalRequest);
+    $stringToSign = "$algorithm\n$amzDate\n$credentialScope\n" . hash('sha256', $canonicalRequest);
 
-    $kSecret   = 'AWS4' . S3_SECRET_KEY;
-    $kDate     = hash_hmac('sha256', $dateStamp, $kSecret, true);
-    $kRegion   = hash_hmac('sha256', S3_REGION, $kDate, true);
-    $kService  = hash_hmac('sha256', $service, $kRegion, true);
-    $kSigning  = hash_hmac('sha256', 'aws4_request', $kService, true);
+    $kSecret = 'AWS4' . S3_SECRET_KEY;
+    $kDate = hash_hmac('sha256', $dateStamp, $kSecret, true);
+    $kRegion = hash_hmac('sha256', S3_REGION, $kDate, true);
+    $kService = hash_hmac('sha256', $service, $kRegion, true);
+    $kSigning = hash_hmac('sha256', 'aws4_request', $kService, true);
     $signature = hash_hmac('sha256', $stringToSign, $kSigning);
 
     $authorization = "$algorithm Credential=" . S3_ACCESS_KEY . "/$credentialScope, " .
         "SignedHeaders=$signedHeaders, Signature=$signature";
 
-    $url     = "$endpoint$canonicalUri?$canonicalQueryString";
+    $url = "$endpoint$canonicalUri?$canonicalQueryString";
     $headers = [
         "Authorization: $authorization",
         "x-amz-date: $amzDate",
@@ -263,14 +264,14 @@ function list_s3_backups(): array
 
     $ch = curl_init();
     curl_setopt_array($ch, [
-        CURLOPT_URL            => $url,
-        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_URL => $url,
+        CURLOPT_HTTPHEADER => $headers,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_SSL_VERIFYPEER => true,
     ]);
 
     $response = curl_exec($ch);
-    $error    = curl_error($ch);
+    $error = curl_error($ch);
     curl_close($ch);
 
     if ($error) {
@@ -288,9 +289,9 @@ function list_s3_backups(): array
     $objects = [];
     foreach ($xml->Contents as $item) {
         $objects[] = [
-            'key'           => (string) $item->Key,
-            'last_modified' => strtotime((string) $item->LastModified),
-            'size'          => (int) $item->Size,
+            'key' => (string)$item->Key,
+            'last_modified' => strtotime((string)$item->LastModified),
+            'size' => (int)$item->Size,
         ];
     }
 
@@ -317,7 +318,7 @@ function get_s3_folder_size(array $backups = []): int
     }
 
     // Sum the 'size' field of every object returned by list_s3_backups()
-    return (int) array_sum(array_column($backups, 'size'));
+    return (int)array_sum(array_column($backups, 'size'));
 }
 
 /**
@@ -329,25 +330,25 @@ function get_s3_folder_size(array $backups = []): int
  */
 function delete_s3_object(string $key): bool
 {
-    $endpoint     = rtrim(S3_ENDPOINT, '/');
+    $endpoint = rtrim(S3_ENDPOINT, '/');
     $canonicalUri = '/' . S3_BUCKET . '/' . ltrim($key, '/');
-    $url          = $endpoint . $canonicalUri;
-    $payloadHash  = hash('sha256', ''); // Empty body for DELETE
+    $url = $endpoint . $canonicalUri;
+    $payloadHash = hash('sha256', ''); // Empty body for DELETE
 
     $headers = s3_build_auth_headers('DELETE', $url, $canonicalUri, $payloadHash);
 
     $ch = curl_init();
     curl_setopt_array($ch, [
-        CURLOPT_URL            => $url,
-        CURLOPT_CUSTOMREQUEST  => 'DELETE',
-        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_URL => $url,
+        CURLOPT_CUSTOMREQUEST => 'DELETE',
+        CURLOPT_HTTPHEADER => $headers,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_SSL_VERIFYPEER => true,
     ]);
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error    = curl_error($ch);
+    $error = curl_error($ch);
     curl_close($ch);
 
     if ($error) {
@@ -403,11 +404,11 @@ function enforce_retention_limit(int $maxBackups): array
  */
 function wait_for_backup_completion(int $timeout = 600): ?string
 {
-    $start   = time();
+    $start = time();
     $homeDir = getenv('HOME') ?: '/home/' . CPANEL_USER;
     echo "Monitoring $homeDir for new backup file...\n";
 
-    $fileFound  = false;
+    $fileFound = false;
     $targetFile = null;
 
     // Phase 1: Wait up to 120 s for the backup file to appear
@@ -418,7 +419,7 @@ function wait_for_backup_completion(int $timeout = 600): ?string
             $newestFile = end($files);
             if (time() - filemtime($newestFile) < 120) {
                 $targetFile = $newestFile;
-                $fileFound  = true;
+                $fileFound = true;
                 break;
             }
         }
@@ -431,7 +432,7 @@ function wait_for_backup_completion(int $timeout = 600): ?string
 
     echo "Found: " . basename($targetFile) . "\nWaiting for write completion...\n";
 
-    $lastSize    = -1;
+    $lastSize = -1;
     $stableCount = 0;
 
     // Phase 2: Wait until the file size stops growing (fully written)
@@ -442,8 +443,9 @@ function wait_for_backup_completion(int $timeout = 600): ?string
 
         if ($currentSize === $lastSize) {
             $stableCount++;
-        } else {
-            $lastSize    = $currentSize;
+        }
+        else {
+            $lastSize = $currentSize;
             $stableCount = 0;
         }
 
@@ -467,9 +469,9 @@ function wait_for_backup_completion(int $timeout = 600): ?string
  */
 function format_duration(int $seconds): string
 {
-    $hours   = intdiv($seconds, 3600);
+    $hours = intdiv($seconds, 3600);
     $minutes = intdiv($seconds % 3600, 60);
-    $secs    = $seconds % 60;
+    $secs = $seconds % 60;
 
     $parts = [];
     if ($hours > 0) {
@@ -494,8 +496,8 @@ function format_duration(int $seconds): string
 function format_bytes(int $bytes, int $decimals = 2): string
 {
     $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    $i     = 0;
-    $size  = (float) $bytes;
+    $i = 0;
+    $size = (float)$bytes;
 
     while ($size >= 1024 && $i < count($units) - 1) {
         $size /= 1024;
@@ -507,7 +509,7 @@ function format_bytes(int $bytes, int $decimals = 2): string
 
 // ─── Main Execution ───────────────────────────────────────────────────────────
 $scriptStart = time();
-$hostname    = CPANEL_HOST;
+$hostname = CPANEL_HOST;
 $mailHeaders = implode("\r\n", [
     "From: Backup to S3 - {$hostname} <noreply@{$hostname}>",
     "Reply-To: noreply@{$hostname}",
@@ -519,12 +521,13 @@ echo "Starting cPanel Backup to S3...\\n";
 // 1. Trigger Local Backup via cPanel UAPI
 echo "Requesting local backup...\n";
 $response = cpanel_api_request('Backup', 'fullbackup_to_homedir', ['email' => NOTIFY_EMAIL]);
-$result   = $response['result'] ?? $response;
+$result = $response['result'] ?? $response;
 
 if (!isset($result['status']) || $result['status'] == 0) {
     echo "[WARN] API reported error: " . print_r($result['errors'] ?? $result, true) . "\n";
     echo "Attempting to monitor anyway...\n";
-} else {
+}
+else {
     echo "Backup initiated (PID: " . ($result['data']['pid'] ?? '?') . ").\n";
 }
 
@@ -545,23 +548,23 @@ if ($backupFile) {
 
         // 5. Enforce Backup Retention: delete oldest S3 backup(s) if over the limit
         $deletedBackups = enforce_retention_limit(MAX_BACKUPS);
-        $duration       = time() - $scriptStart;
+        $duration = time() - $scriptStart;
 
         // 6. Get total S3 folder size after retention clean-up (reuse the fresh list)
-        $remainingBackups  = list_s3_backups();
+        $remainingBackups = list_s3_backups();
         $s3FolderTotalSize = get_s3_folder_size($remainingBackups);
 
         // 7. Send Success Notification
-        $subject  = "[Backup Success] " . CPANEL_HOST . " -> S3";
-        $body     = "Backup completed successfully.\n\n";
-        $body    .= "Host          : " . CPANEL_HOST . "\n";
-        $body    .= "Bucket        : " . S3_BUCKET . "\n";
-        $body    .= "File          : " . basename($backupFile) . "\n";
-        $body    .= "Size on S3    : " . format_bytes($uploadedBytes) . "\n";
-        $body    .= "Folder total  : " . format_bytes($s3FolderTotalSize) .
+        $subject = "[Backup Success] " . CPANEL_HOST . " -> S3";
+        $body = "Backup completed successfully.\n\n";
+        $body .= "Host          : " . CPANEL_HOST . "\n";
+        $body .= "Bucket        : " . S3_BUCKET . "\n";
+        $body .= "File          : " . basename($backupFile) . "\n";
+        $body .= "Size on S3    : " . format_bytes($uploadedBytes) . "\n";
+        $body .= "Folder total  : " . format_bytes($s3FolderTotalSize) .
             " (" . count($remainingBackups) . " backup(s))\n";
-        $body    .= "Duration      : " . format_duration($duration) . "\n";
-        $body    .= "Completed at  : " . date('Y-m-d H:i:s T') . "\n";
+        $body .= "Duration      : " . format_duration($duration) . "\n";
+        $body .= "Completed at  : " . date('Y-m-d H:i:s T') . "\n";
 
         if (!empty($deletedBackups)) {
             $body .= "\nRetention limit (" . MAX_BACKUPS . " max) reached. Removed old backup(s):\n";
@@ -570,29 +573,31 @@ if ($backupFile) {
             }
         }
 
-        mail(NOTIFY_EMAIL, $subject, $body);
+        mail(NOTIFY_EMAIL, $subject, $body, $mailHeaders);
         echo "[OK] Process complete. Notification sent.\n";
-    } else {
+    }
+    else {
         // Upload Failed Notification
         $duration = time() - $scriptStart;
-        $subject  = "[Backup FAILED] " . CPANEL_HOST . " S3 Upload Error";
-        $body     = "Backup upload to S3 failed.\n\n";
-        $body    .= "Host    : " . CPANEL_HOST . "\n";
-        $body    .= "Bucket  : " . S3_BUCKET . "\n";
-        $body    .= "File    : " . basename($backupFile) . "\n";
-        $body    .= "Duration: " . format_duration($duration) . "\n\n";
-        $body    .= "Please check the server logs for details.";
-        mail(NOTIFY_EMAIL, $subject, $body);
+        $subject = "[Backup FAILED] " . CPANEL_HOST . " S3 Upload Error";
+        $body = "Backup upload to S3 failed.\n\n";
+        $body .= "Host    : " . CPANEL_HOST . "\n";
+        $body .= "Bucket  : " . S3_BUCKET . "\n";
+        $body .= "File    : " . basename($backupFile) . "\n";
+        $body .= "Duration: " . format_duration($duration) . "\n\n";
+        $body .= "Please check the server logs for details.";
+        mail(NOTIFY_EMAIL, $subject, $body, $mailHeaders);
         echo "[ERROR] Upload failed. Notification sent.\n";
     }
-} else {
+}
+else {
     // Backup Timeout Notification
     $duration = time() - $scriptStart;
-    $subject  = "[Backup FAILED] " . CPANEL_HOST . " Backup Timeout";
-    $body     = "Backup creation timed out after " . format_duration($duration) . ".\n\n";
-    $body    .= "Host: " . CPANEL_HOST . "\n";
-    $body    .= "The backup file was not detected in the home directory in time.\n";
-    $body    .= "Please check the cPanel backup logs.";
-    mail(NOTIFY_EMAIL, $subject, $body);
+    $subject = "[Backup FAILED] " . CPANEL_HOST . " Backup Timeout";
+    $body = "Backup creation timed out after " . format_duration($duration) . ".\n\n";
+    $body .= "Host: " . CPANEL_HOST . "\n";
+    $body .= "The backup file was not detected in the home directory in time.\n";
+    $body .= "Please check the cPanel backup logs.";
+    mail(NOTIFY_EMAIL, $subject, $body, $mailHeaders);
     echo "[ERROR] Backup creation timed out. Notification sent.\n";
 }
