@@ -279,16 +279,24 @@ function list_s3_backups(): array
         return [];
     }
 
-    $xml = simplexml_load_string($response);
-    $objects = [];
+    // Use robust regex to bypass SimpleXML namespace issues with various S3 providers
+    // Match <Contents> (or <s3:Contents>) block, then extract Key, LastModified, and Size
+    preg_match_all('/(?:<[^>]*:)?Contents[^>]*>(.*?)(?:<\/[^>]*:)?Contents>/is', $response, $blocks);
 
-    if ($xml && isset($xml->Contents)) {
-        foreach ($xml->Contents as $content) {
-            $objects[] = [
-                'key' => (string)$content->Key,
-                'last_modified' => strtotime((string)$content->LastModified),
-                'size' => (int)$content->Size,
-            ];
+    $objects = [];
+    if (!empty($blocks[1])) {
+        foreach ($blocks[1] as $block) {
+            preg_match('/(?:<[^>]*:)?Key[^>]*>(.*?)(?:<\/[^>]*:)?Key>/is', $block, $keyMatch);
+            preg_match('/(?:<[^>]*:)?LastModified[^>]*>(.*?)(?:<\/[^>]*:)?LastModified>/is', $block, $modMatch);
+            preg_match('/(?:<[^>]*:)?Size[^>]*>(.*?)(?:<\/[^>]*:)?Size>/is', $block, $sizeMatch);
+
+            if (!empty($keyMatch[1]) && !empty($sizeMatch[1])) {
+                $objects[] = [
+                    'key' => trim($keyMatch[1]),
+                    'last_modified' => !empty($modMatch[1]) ? strtotime(trim($modMatch[1])) : 0,
+                    'size' => (int)trim($sizeMatch[1]),
+                ];
+            }
         }
     }
 
@@ -570,9 +578,7 @@ if ($backupFile) {
             }
         }
 
-        // Add proper From header to the mail
-        $headers_str = trim($mailHeaders) . "\r\n";
-        mail(NOTIFY_EMAIL, $subject, $body, $headers_str, "-f noreply@{$hostname}");
+        mail(NOTIFY_EMAIL, $subject, $body, $mailHeaders, "-f \"noreply@{$hostname}\"");
         echo "[OK] Process complete. Notification sent.\n";
     }
     else {
@@ -586,8 +592,7 @@ if ($backupFile) {
         $body .= "Duration: " . format_duration($duration) . "\n\n";
         $body .= "Please check the server logs for details.";
 
-        $headers_str = trim($mailHeaders) . "\r\n";
-        mail(NOTIFY_EMAIL, $subject, $body, $headers_str, "-f noreply@{$hostname}");
+        mail(NOTIFY_EMAIL, $subject, $body, $mailHeaders, "-f \"noreply@{$hostname}\"");
         echo "[ERROR] Upload failed. Notification sent.\n";
     }
 }
@@ -600,7 +605,6 @@ else {
     $body .= "The backup file was not detected in the home directory in time.\n";
     $body .= "Please check the cPanel backup logs.";
 
-    $headers_str = trim($mailHeaders) . "\r\n";
-    mail(NOTIFY_EMAIL, $subject, $body, $headers_str, "-f noreply@{$hostname}");
+    mail(NOTIFY_EMAIL, $subject, $body, $mailHeaders, "-f \"noreply@{$hostname}\"");
     echo "[ERROR] Backup creation timed out. Notification sent.\n";
 }
