@@ -281,20 +281,20 @@ function list_s3_backups(): array
 
     // Use robust regex to bypass SimpleXML namespace issues with various S3 providers
     // Match <Contents> (or <s3:Contents>) block, then extract Key, LastModified, and Size
-    preg_match_all('/(?:<[^>]*:)?Contents[^>]*>(.*?)(?:<\/[^>]*:)?Contents>/is', $response, $blocks);
+    preg_match_all('/<[^>]*Contents[^>]*>(.*?)<\/[^>]*Contents>/is', $response, $blocks);
 
     $objects = [];
     if (!empty($blocks[1])) {
         foreach ($blocks[1] as $block) {
-            preg_match('/(?:<[^>]*:)?Key[^>]*>(.*?)(?:<\/[^>]*:)?Key>/is', $block, $keyMatch);
-            preg_match('/(?:<[^>]*:)?LastModified[^>]*>(.*?)(?:<\/[^>]*:)?LastModified>/is', $block, $modMatch);
-            preg_match('/(?:<[^>]*:)?Size[^>]*>(.*?)(?:<\/[^>]*:)?Size>/is', $block, $sizeMatch);
+            preg_match('/<[^>]*Key[^>]*>([^<]+)/is', $block, $keyMatch);
+            preg_match('/<[^>]*LastModified[^>]*>([^<]+)/is', $block, $modMatch);
+            preg_match('/<[^>]*Size[^>]*>([^<]+)/is', $block, $sizeMatch);
 
             if (!empty($keyMatch[1]) && !empty($sizeMatch[1])) {
                 $objects[] = [
-                    'key' => trim($keyMatch[1]),
-                    'last_modified' => !empty($modMatch[1]) ? strtotime(trim($modMatch[1])) : 0,
-                    'size' => (int)trim($sizeMatch[1]),
+                    'key' => rtrim(trim(strip_tags($keyMatch[1])), '< \n\r\t/'),
+                    'last_modified' => !empty($modMatch[1]) ? strtotime(trim(strip_tags($modMatch[1]))) : 0,
+                    'size' => (int)trim(strip_tags($sizeMatch[1])),
                 ];
             }
         }
