@@ -25,6 +25,7 @@ constants = {
     'S3_SECRET_KEY': 'string',
     'S3_PATH_PREFIX': 'string',
     'NOTIFY_EMAIL': 'string',
+    'HEALTHCHECK_URL': 'string',
     'MAX_BACKUPS': 'int'
 }
 

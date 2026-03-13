@@ -8,6 +8,7 @@ Automated PHP script that triggers a cPanel full backup and uploads it to any S3
 - **S3-Compatible Upload** — uses AWS Signature v4, works with any S3-compatible provider
 - **Automatic Cleanup** — deletes the local backup file after a successful upload
 - **Checksum Verification** — calculates local SHA1 and MD5 hashes and verifies them against S3 native SHA1 calculation or ETag (MD5) before deletion
+- **Ping Monitoring** — Built-in integration with Healthchecks.io so you get alerted if a backup ever fails or misses its schedule
 - **Email Notifications** — sends detailed success/failure alerts including run time, backup size, and checksum matches; emails are sent from `noreply@<your-host>` with the display name `Backup to S3 - <your-host>`
 - **Smart Polling** — monitors the home directory for the backup file and waits for it to finish writing before uploading
 - **Run Time Reporting** — tracks and reports total script execution time in every notification email
@@ -47,10 +48,11 @@ Edit the constants at the top of `cpanel_backup_s3.php`:
 
 ### Notification & Retention
 
-| Constant       | Description                                                                 |
-| -------------- | --------------------------------------------------------------------------- |
-| `NOTIFY_EMAIL` | Email address for notifications                                             |
-| `MAX_BACKUPS`  | Max number of backups to keep in the S3 prefix (set to `0` to keep all)    |
+| Constant          | Description                                                                 |
+| ----------------- | --------------------------------------------------------------------------- |
+| `NOTIFY_EMAIL`    | Email address for notifications                                             |
+| `HEALTHCHECK_URL` | Healthchecks.io ping URL (e.g., `https://hc-ping.com/YOUR-UUID`)            |
+| `MAX_BACKUPS`     | Max number of backups to keep in the S3 prefix (set to `0` to keep all)    |
 
 > **Note:** Notification emails are automatically sent from `noreply@<CPANEL_HOST>` with the sender name `Backup to S3 - <CPANEL_HOST>`, so they appear clearly identified in your inbox.
 
@@ -138,6 +140,19 @@ Please check the server logs for details.
 ## Deployment
 
 This script is deployed directly to the cPanel server via SSH. The `.github/` directory contains deployment workflows and configuration secrets and is **excluded from the repository** — it is managed locally only and never pushed to GitHub.
+
+### Required GitHub Secrets
+- `CPANEL_API_TOKEN`
+- `S3_ACCESS_KEY`
+- `S3_SECRET_KEY`
+- `SSH_PRIVATE_KEY`
+- `HEALTHCHECK_URL` (Optional)
+
+### Required GitHub Variables
+- `CPANEL_HOST`, `CPANEL_PORT`, `CPANEL_USER`
+- `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_PATH_PREFIX`
+- `NOTIFY_EMAIL`, `MAX_BACKUPS`
+- `SSH_HOST`, `SSH_USER`, `SSH_PORT`, `DEPLOY_PATH`
 
 ## License
 

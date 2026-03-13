@@ -21,6 +21,7 @@ define('S3_PATH_PREFIX', 'backups/'); // Optional prefix (folder)
 
 // Notification
 define('NOTIFY_EMAIL', 'admin@example.com');
+define('HEALTHCHECK_URL', ''); // e.g., https://hc-ping.com/YOUR-UUID (leave empty to disable)
 
 // Backup Retention: maximum number of backups to keep in the S3 folder.
 // Set to 0 to disable retention management (keep all backups).
@@ -635,6 +636,23 @@ if ($backupFile) {
 
         mail(NOTIFY_EMAIL, $subject, $body, $mailHeaders, "-f \"noreply@{$hostname}\"");
         echo "[OK] Process complete. Notification sent.\n";
+
+        // 8. Ping Healthchecks.io on success
+        if (defined('HEALTHCHECK_URL') && HEALTHCHECK_URL !== '') {
+            $hcUrl = HEALTHCHECK_URL;
+            echo "Pinging Healthcheck URL: " . $hcUrl . "...\n";
+            $chHc = curl_init($hcUrl);
+            curl_setopt($chHc, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($chHc, CURLOPT_TIMEOUT, 10);
+            $hcResponse = curl_exec($chHc);
+            $hcCode = curl_getinfo($chHc, CURLINFO_HTTP_CODE);
+            curl_close($chHc);
+            if ($hcCode >= 200 && $hcCode < 300) {
+                echo "[SUCCESS] Healthcheck pinged successfully.\n";
+            } else {
+                echo "[WARN] Healthcheck ping failed (HTTP $hcCode).\n";
+            }
+        }
     }
     else {
         // Upload Failed Notification
@@ -648,6 +666,15 @@ if ($backupFile) {
         $body .= "Duration  : " . format_duration($duration) . "\n\n";
         $body .= "Please check the server logs for details.";
 
+        if (defined('HEALTHCHECK_URL') && HEALTHCHECK_URL !== '') {
+            $hcUrl = rtrim(HEALTHCHECK_URL, '/') . '/fail';
+            $chHc = curl_init($hcUrl);
+            curl_setopt($chHc, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($chHc, CURLOPT_TIMEOUT, 10);
+            curl_exec($chHc);
+            curl_close($chHc);
+        }
+
         mail(NOTIFY_EMAIL, $subject, $body, $mailHeaders, "-f \"noreply@{$hostname}\"");
         echo "[ERROR] Upload failed. Notification sent.\n";
     }
@@ -660,6 +687,15 @@ else {
     $body .= "Host: " . CPANEL_HOST . "\n";
     $body .= "The backup file was not detected in the home directory in time.\n";
     $body .= "Please check the cPanel backup logs.";
+
+    if (defined('HEALTHCHECK_URL') && HEALTHCHECK_URL !== '') {
+        $hcUrl = rtrim(HEALTHCHECK_URL, '/') . '/fail';
+        $chHc = curl_init($hcUrl);
+        curl_setopt($chHc, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($chHc, CURLOPT_TIMEOUT, 10);
+        curl_exec($chHc);
+        curl_close($chHc);
+    }
 
     mail(NOTIFY_EMAIL, $subject, $body, $mailHeaders, "-f \"noreply@{$hostname}\"");
     echo "[ERROR] Backup creation timed out. Notification sent.\n";
