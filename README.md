@@ -7,7 +7,8 @@ Automated PHP script that triggers a cPanel full backup and uploads it to any S3
 - **cPanel UAPI Integration** — triggers full backups via cPanel's API using token-based authentication
 - **S3-Compatible Upload** — uses AWS Signature v4, works with any S3-compatible provider
 - **Automatic Cleanup** — deletes the local backup file after a successful upload
-- **Email Notifications** — sends detailed success/failure alerts including run time, backup size, and folder total; emails are sent from `noreply@<your-host>` with the display name `Backup to S3 - <your-host>`
+- **Checksum Verification** — calculates local SHA1 and MD5 hashes and verifies them against S3 native SHA1 calculation or ETag (MD5) before deletion
+- **Email Notifications** — sends detailed success/failure alerts including run time, backup size, and checksum matches; emails are sent from `noreply@<your-host>` with the display name `Backup to S3 - <your-host>`
 - **Smart Polling** — monitors the home directory for the backup file and waits for it to finish writing before uploading
 - **Run Time Reporting** — tracks and reports total script execution time in every notification email
 - **Backup Size Reporting** — includes the uploaded file size and the real total size of the entire S3 backup folder in the notification email
@@ -85,11 +86,13 @@ crontab -e
 1. **Trigger** — calls the cPanel UAPI (`Backup/fullbackup_to_homedir`) to start a full backup
 2. **Poll** — monitors the home directory for a new `backup-*.tar.gz` file (up to 2 min wait)
 3. **Wait** — once found, watches the file size until it stabilizes (file fully written)
-4. **Upload** — signs and uploads the file to S3 using AWS Signature v4 (PUT request)
-5. **Cleanup** — deletes the local backup file on successful upload
-6. **Retention** — lists all backups in the S3 prefix; if the count exceeds `MAX_BACKUPS`, the oldest are deleted
-7. **Folder Size** — queries S3 to calculate and report the real total size of all backups in the prefix
-8. **Notify** — sends an email with the full result summary (see below)
+4. **Checksum** — locally calculates the file's SHA1 and MD5 hashes before upload
+5. **Upload** — signs and uploads the file to S3 (including `x-amz-checksum-algorithm: SHA1` headers) using AWS Signature v4
+6. **Verify** — intercepts S3 response headers to ensure the S3-computed SHA1 or ETag perfectly matches the local file
+7. **Cleanup** — deletes the local backup file on successful upload (even if checksum is unavailable, to save server space)
+8. **Retention** — lists all backups in the S3 prefix; if the count exceeds `MAX_BACKUPS`, the oldest are deleted
+9. **Folder Size** — queries S3 to calculate and report the real total size of all backups in the prefix
+10. **Notify** — sends an email with the full result summary (see below)
 
 ## Notification Email Format
 
@@ -104,6 +107,10 @@ Host          : 4host.ca
 Bucket        : my-backup-bucket
 File          : backup-2026-02-26_02-00-01.tar.gz
 Size on S3    : 3.47 GB
+Local SHA1    : 1234abcd0070432b167...
+Local MD5     : d8d68863d79c609558d...
+S3 Checksum   : d8d68863d79c609558d... (ETag)
+Checksum Match: MATCH via MD5 (ETag)
 Folder total  : 14.21 GB (4 backup(s))
 Duration      : 4m 12s
 Completed at  : 2026-02-26 07:12:13 EST
@@ -119,10 +126,11 @@ From: Backup to S3 - 4host.ca <noreply@4host.ca>
 
 Backup upload to S3 failed.
 
-Host    : 4host.ca
-Bucket  : my-backup-bucket
-File    : backup-2026-02-26_02-00-01.tar.gz
-Duration: 1m 03s
+Host      : 4host.ca
+Bucket    : my-backup-bucket
+File      : backup-2026-02-26_02-00-01.tar.gz
+Local SHA1: 1234abcd0070432b167...
+Duration  : 1m 03s
 
 Please check the server logs for details.
 ```

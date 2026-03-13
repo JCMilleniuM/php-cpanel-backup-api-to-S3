@@ -143,12 +143,13 @@ function s3_build_auth_headers(
 
 /**
  * Uploads a local file to S3 using AWS Signature v4.
+ * Request S3 to compute the SHA1 checksum at upload time.
  *
  * @param string $filepath Local path to the file to upload.
  *
- * @return int|false Size of the uploaded file in bytes, or false on failure.
+ * @return array|bool Array with upload details (size, s3_sha1_base64, etag) or false on failure.
  */
-function upload_to_s3(string $filepath): int|false
+function upload_to_s3(string $filepath): array|bool
 {
     if (!file_exists($filepath)) {
         echo "[ERROR] File not found: $filepath\n";
@@ -173,6 +174,7 @@ function upload_to_s3(string $filepath): int|false
     $extraHeaders = [
         'Content-Type' => 'application/octet-stream',
         'Content-Length' => (string)$filesize,
+        'x-amz-checksum-algorithm' => 'SHA1',
     ];
 
     $headers = s3_build_auth_headers('PUT', $url, $canonicalUri, $payloadHash, $extraHeaders);
@@ -180,6 +182,17 @@ function upload_to_s3(string $filepath): int|false
     echo "Uploading to S3 ($url)...\n";
 
     $fh = fopen($filepath, 'r');
+    
+    $responseHeaders = [];
+    $headerCallback = function($curl, $header) use (&$responseHeaders) {
+        $len = strlen($header);
+        $headerParts = explode(':', $header, 2);
+        if (count($headerParts) >= 2) {
+            $responseHeaders[strtolower(trim($headerParts[0]))] = trim($headerParts[1]);
+        }
+        return $len;
+    };
+
     $ch = curl_init();
     curl_setopt_array($ch, [
         CURLOPT_URL => $url,
@@ -188,6 +201,7 @@ function upload_to_s3(string $filepath): int|false
         CURLOPT_INFILESIZE => $filesize,
         CURLOPT_HTTPHEADER => $headers,
         CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HEADERFUNCTION => $headerCallback,
         CURLOPT_SSL_VERIFYPEER => true,
         CURLOPT_FAILONERROR => false, // Read error body
     ]);
@@ -205,7 +219,15 @@ function upload_to_s3(string $filepath): int|false
 
     if ($httpCode >= 200 && $httpCode < 300) {
         echo "[SUCCESS] Upload complete.\n";
-        return $filesize;
+        
+        $s3Sha1 = $responseHeaders['x-amz-checksum-sha1'] ?? 'N/A';
+        $etag = $responseHeaders['etag'] ?? 'N/A';
+        
+        return [
+            'size' => $filesize,
+            's3_sha1_base64' => $s3Sha1,
+            'etag' => trim($etag, '"'),
+        ];
     }
 
     echo "[ERROR] S3 Upload Failed (HTTP $httpCode):\n$response\n";
@@ -542,10 +564,39 @@ $backupFile = wait_for_backup_completion();
 if ($backupFile) {
     echo "Local backup ready: $backupFile\n";
 
-    // 3. Upload to S3 and capture uploaded file size (returns bytes or false)
-    $uploadedBytes = upload_to_s3($backupFile);
+    echo "Calculating local SHA1 and MD5 checksums...\n";
+    $localSha1Hex = sha1_file($backupFile);
+    $localSha1Base64 = base64_encode(hex2bin($localSha1Hex));
+    $localMd5Hex = md5_file($backupFile);
+    echo "Local SHA1 (Hex): $localSha1Hex\n";
+    echo "Local SHA1 (Base64): $localSha1Base64\n";
+    echo "Local MD5 (Hex): $localMd5Hex\n";
 
-    if ($uploadedBytes !== false) {
+    // 3. Upload to S3 and capture uploaded file size (returns array or false)
+    $uploadResult = upload_to_s3($backupFile);
+
+    if ($uploadResult !== false) {
+        $uploadedBytes = $uploadResult['size'];
+        $s3Sha1Base64 = $uploadResult['s3_sha1_base64'];
+        $s3Etag = $uploadResult['etag'];
+        
+        $checksumStatus = "UNAVAILABLE";
+        $checksumMethod = "None";
+        if ($s3Sha1Base64 !== 'N/A') {
+            $checksumStatus = ($localSha1Base64 === $s3Sha1Base64) ? "MATCH" : "MISMATCH";
+            $checksumMethod = "SHA1 (Native)";
+        } elseif ($s3Etag !== 'N/A' && strpos($s3Etag, '-') === false) { // ETag is usually MD5 for non-multipart
+            $checksumStatus = ($localMd5Hex === $s3Etag) ? "MATCH" : "MISMATCH";
+            $checksumMethod = "MD5 (ETag)";
+        }
+        
+        if ($checksumStatus === "MATCH") {
+            echo "[SUCCESS] S3 Checksum ($checksumMethod) matches local checksum.\n";
+        } elseif ($checksumStatus === "UNAVAILABLE") {
+            echo "[WARN] S3 did not return a verifiable checksum.\n";
+        } else {
+            echo "[WARN] S3 Checksum ($checksumMethod) DOES NOT MATCH local checksum!\n";
+        }
         // 4. Delete Local Copy
         if (unlink($backupFile)) {
             echo "Local file deleted.\n";
@@ -566,6 +617,10 @@ if ($backupFile) {
         $body .= "Bucket        : " . S3_BUCKET . "\n";
         $body .= "File          : " . basename($backupFile) . "\n";
         $body .= "Size on S3    : " . format_bytes($uploadedBytes) . "\n";
+        $body .= "Local SHA1    : " . $localSha1Hex . "\n";
+        $body .= "Local MD5     : " . $localMd5Hex . "\n";
+        $body .= "S3 Checksum   : " . ($s3Sha1Base64 !== 'N/A' ? bin2hex(base64_decode($s3Sha1Base64)) . " (SHA1)" : ($s3Etag !== 'N/A' ? $s3Etag . " (ETag)" : 'N/A')) . "\n";
+        $body .= "Checksum Match: " . $checksumStatus . " via " . $checksumMethod . "\n";
         $body .= "Folder total  : " . format_bytes($s3FolderTotalSize) .
             " (" . count($remainingBackups) . " backup(s))\n";
         $body .= "Duration      : " . format_duration($duration) . "\n";
@@ -586,10 +641,11 @@ if ($backupFile) {
         $duration = time() - $scriptStart;
         $subject = "[Backup FAILED] " . CPANEL_HOST . " S3 Upload Error";
         $body = "Backup upload to S3 failed.\n\n";
-        $body .= "Host    : " . CPANEL_HOST . "\n";
-        $body .= "Bucket  : " . S3_BUCKET . "\n";
-        $body .= "File    : " . basename($backupFile) . "\n";
-        $body .= "Duration: " . format_duration($duration) . "\n\n";
+        $body .= "Host      : " . CPANEL_HOST . "\n";
+        $body .= "Bucket    : " . S3_BUCKET . "\n";
+        $body .= "File      : " . basename($backupFile) . "\n";
+        $body .= "Local SHA1: " . $localSha1Hex . "\n";
+        $body .= "Duration  : " . format_duration($duration) . "\n\n";
         $body .= "Please check the server logs for details.";
 
         mail(NOTIFY_EMAIL, $subject, $body, $mailHeaders, "-f \"noreply@{$hostname}\"");
